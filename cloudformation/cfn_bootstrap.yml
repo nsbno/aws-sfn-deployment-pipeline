@@ -1,0 +1,89 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  Creates an S3 bucket and DynamoDB table to store remote Terraform state and lock information in, respectively. The S3 bucket is set up with a policy that enforces objects to be encrypted with a specific key. Both the bucket and table will be prefixed with the ID of the current AWS account for uniqueness and consistency's sake.
+Parameters:
+  BucketSuffix:
+    Type: String
+    Default: "terraform-state"
+    Description: "A suffix to append to the name of the S3 bucket."
+  TableSuffix:
+    Type: String
+    Default: "terraform-lock"
+    Description: "A suffix to append to the name of the DynamoDB table."
+
+Resources:
+  TerraformBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Sub "${AWS::AccountId}-${BucketSuffix}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration: 
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: "aws:kms"
+            KMSMasterKeyID: !Ref BucketEncryptionKey
+      VersioningConfiguration:
+        Status: Enabled
+
+  EnforceBucketEncryption:
+       Type: AWS::S3::BucketPolicy
+       Properties:
+         Bucket: !Ref TerraformBucket
+         PolicyDocument:
+           Statement:
+             - Effect: Deny
+               Principal: '*'
+               Action: 's3:PutObject'
+               Resource: !Sub
+                 - '${BucketArn}/*'
+                 - BucketArn: !GetAtt TerraformBucket.Arn
+               Condition:
+                 'Null':
+                   s3:x-amz-server-side-encryption: false
+                 StringNotEquals:
+                   s3:x-amz-server-side-encryption: 'aws:kms'
+             - Effect: Deny
+               Principal: '*'
+               Action: 's3:PutObject'
+               Resource: !Sub
+                 - '${BucketArn}/*'
+                 - BucketArn: !GetAtt TerraformBucket.Arn
+               Condition:
+                 StringNotEquals:
+                   s3:x-amz-server-side-encryption: 'aws:kms'
+                 StringNotEqualsIfExists:
+                   s3:x-amz-server-side-encryption-aws-kms-key-id: !GetAtt BucketEncryptionKey.Arn
+
+
+  BucketEncryptionKey:
+    Type: "AWS::KMS::Key"
+    Properties:
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+          Action: "kms:*"
+          Resource: '*'
+
+
+  TerraformTable:
+    Type: 'AWS::DynamoDB::Table'
+    Properties:
+      TableName: !Sub "${AWS::AccountId}-${TableSuffix}"
+      BillingMode: "PROVISIONED"
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      AttributeDefinitions:
+        - AttributeName: "LockID"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "LockID"
+          KeyType: "HASH"
+
+Outputs:
+  TerraformTable:
+    Value: !Ref TerraformTable
+  TerraformBucket:
+    Value: !Ref TerraformBucket

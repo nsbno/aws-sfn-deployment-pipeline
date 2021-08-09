@@ -1,5 +1,3 @@
-locals {
-  state_definition = <<-EOF
 {
   "Comment": "A deployment pipeline implemented as a state machine",
   "StartAt": "Get Latest Artifact Versions",
@@ -9,8 +7,8 @@ locals {
       "Type": "Task",
       "Resource": "arn:aws:states:::lambda:invoke",
       "Parameters": {
-        "FunctionName": "${module.set_version_lambda.function_name}",
-        "Payload": ${local.get_versions_input_set_version}
+        "FunctionName": "${set_version.function_name}",
+        "Payload": ${set_version.payloads.initial}
       },
       "ResultSelector": {
         "ecr.$": "$.Payload.ecr",
@@ -21,7 +19,7 @@ locals {
       "Next": "Deploy to Test and Stage"
     },
     "Deploy to Test and Stage": {
-      "Comment": "Parallell deployment to test and stage environments",
+      "Comment": "Parallel deployment to test and stage environments",
       "Type": "Parallel",
       "Next": "Raise Errors",
       "ResultPath": "$.result",
@@ -34,8 +32,8 @@ locals {
               "Type": "Task",
               "Resource": "arn:aws:states:::lambda:invoke",
               "Parameters": {
-                "FunctionName": "${module.set_version_lambda.function_name}",
-                "Payload": ${local.test_input_set_version}
+                "FunctionName": "${set_version.function_name}",
+                "Payload": ${set_version.payloads.test}
               },
               "Catch": [{
                 "ErrorEquals": ["States.ALL"],
@@ -46,10 +44,11 @@ locals {
             },
             "Deploy Test": {
               "Type": "Task",
+              "Comment": "Spins up a single-use Fargate task and deploys to the test environment",
               "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
               "Parameters": {
-                "FunctionName": "${module.single_use_fargate_task.function_name}",
-                "Payload": ${local.test_input_single_use_fargate_task}
+                "FunctionName": "${fargate_task.function_name}",
+                "Payload": ${fargate_task.payloads.test}
               },
               "Catch": [{
                 "ErrorEquals": ["States.ALL"],
@@ -74,8 +73,8 @@ locals {
               "Type": "Task",
               "Resource": "arn:aws:states:::lambda:invoke",
               "Parameters": {
-                "FunctionName": "${module.set_version_lambda.function_name}",
-                "Payload": ${local.stage_input_set_version}
+                "FunctionName": "${set_version.function_name}",
+                "Payload": ${set_version.payloads.stage}
               },
               "Catch": [{
                 "ErrorEquals": ["States.ALL"],
@@ -86,10 +85,11 @@ locals {
             },
             "Deploy Stage": {
               "Type": "Task",
+              "Comment": "Spins up a single-use Fargate task and deploys to the stage environment",
               "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
               "Parameters": {
-                "FunctionName": "${module.single_use_fargate_task.function_name}",
-                "Payload": ${local.stage_input_single_use_fargate_task}
+                "FunctionName": "${fargate_task.function_name}",
+                "Payload": ${fargate_task.payloads.stage}
               },
               "Catch": [{
                 "ErrorEquals": ["States.ALL"],
@@ -119,8 +119,8 @@ locals {
               "Type": "Task",
               "Resource": "arn:aws:states:::lambda:invoke",
               "Parameters": {
-                "FunctionName": "${module.set_version_lambda.function_name}",
-                "Payload": ${local.service_input_set_version}
+                "FunctionName": "${set_version.function_name}",
+                "Payload": ${set_version.payloads.service}
               },
               "Catch": [{
                 "ErrorEquals": ["States.ALL"],
@@ -131,10 +131,11 @@ locals {
             },
             "Deploy Service": {
               "Type": "Task",
+              "Comment": "Spins up a single-use Fargate task and deploys to the service environment",
               "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
               "Parameters": {
-                "FunctionName": "${module.single_use_fargate_task.function_name}",
-                "Payload": ${local.service_input_single_use_fargate_task}
+                "FunctionName": "${fargate_task.function_name}",
+                "Payload": ${fargate_task.payloads.service}
               },
               "Catch": [{
                 "ErrorEquals": ["States.ALL"],
@@ -158,7 +159,7 @@ locals {
       "Type": "Task",
       "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
       "Parameters": {
-        "FunctionName": "${module.error_catcher.function_name}",
+        "FunctionName": "${error_catcher.function_name}",
         "Payload":  {
           "token.$": "$$.Task.Token",
           "input.$": "$.result"
@@ -169,22 +170,23 @@ locals {
       "Next": "Bump Versions in Prod"
     },
     "Bump Versions in Prod": {
-      "Comment": "Update SSM parameters in service environment to latest versions of applications artifacts",
+      "Comment": "Update SSM parameters in prod environment to latest versions of applications artifacts",
       "Type": "Task",
       "Resource": "arn:aws:states:::lambda:invoke",
       "Parameters": {
-        "FunctionName": "${module.set_version_lambda.function_name}",
-        "Payload": ${local.prod_input_set_version}
+        "FunctionName": "${set_version.function_name}",
+        "Payload": ${set_version.payloads.prod}
       },
       "ResultPath": null,
       "Next": "Deploy Prod"
     },
     "Deploy Prod":{
       "Type": "Task",
+      "Comment": "Spins up a single-use Fargate task and deploys to the prod environment",
       "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
       "Parameters": {
-        "FunctionName": "${module.single_use_fargate_task.function_name}",
-        "Payload": ${local.prod_input_single_use_fargate_task}
+        "FunctionName": "${fargate_task.function_name}",
+        "Payload": ${fargate_task.payloads.prod}
       },
       "ResultPath": null,
       "TimeoutSeconds": 3600,
@@ -197,6 +199,3 @@ locals {
     }
   }
 }
-EOF
-}
-

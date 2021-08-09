@@ -50,10 +50,11 @@ This Terraform module sets up an AWS Lambda function that will send messages to 
 
 The module can be used utilized by adding the following snippet to your _service_ account (i.e., `terraform/service/main.tf`):
 ```terraform
-module "slack-notifier" {
-  source         = "github.com/nsbno/terraform-stepfunction-status-slack?ref=9627162"
+module "slack_notifier" {
+  source         = "github.com/nsbno/terraform-stepfunction-status-slack?ref=5de7f6b"
   name_prefix    = local.name_prefix
   slackwebhook   = "<webhook-url>"
+  tags           = local.tags
 }
 ```
 
@@ -68,6 +69,7 @@ module "metrics" {
   source             = "github.com/nsbno/terraform-aws-pipeline-metrics?ref=9370d33"
   name_prefix        = local.name_prefix
   state_machine_arns = [aws_sfn_state_machine.state_machine.id]
+  tags               = local.tags
 }
 ```
 
@@ -76,13 +78,14 @@ See module documentation for more details: https://github.com/nsbno/terraform-aw
 ### Manual Approval Step
 This Terraform module exposes an AWS Lambda function that can be used inside an AWS Step Functions pipeline to send a message to Slack and manually wait for an approval or rejection.
 
-The module can be used utilized by adding the following snippet to your _service_ account (i.e., `terraform/service/main.tf`):
+The module can be used by adding the following snippet to your _service_ account (i.e., `terraform/service/main.tf`):
 ```terraform
-module "approval" {
+module "manual_approval" {
   source             = "github.com/nsbno/terraform-aws-pipeline-approver?ref=d1bd28d"
   name_prefix        = local.name_prefix
   slack_webhook_url  = "<webhook-url>"
   state_machine_arns = [aws_sfn_state_machine.state_machine.id]
+  tags               = local.tags
 }
 ```
 

@@ -1,6 +1,11 @@
 terraform {
-  required_version = "0.12.29"
-
+  required_version = "1.0.0"
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "3.53.0"
+    }
+  }
   backend "s3" {
     key            = "<project-name>/main.tfstate"
     bucket         = "<prod-account-id>-<terraform-state-bucket-suffix>"
@@ -10,7 +15,6 @@ terraform {
 }
 
 provider "aws" {
-  version             = "3.3.0"
   region              = "eu-west-1"
   allowed_account_ids = ["<prod-account-id>"]
 }

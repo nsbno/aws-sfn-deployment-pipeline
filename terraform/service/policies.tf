@@ -2,7 +2,7 @@ data "aws_iam_policy_document" "s3_for_accounts" {
   statement {
     effect    = "Allow"
     actions   = ["s3:Get*", "s3:List*"]
-    resources = [aws_s3_bucket.project_bucket.arn, "${aws_s3_bucket.project_bucket.arn}/*"]
+    resources = [aws_s3_bucket.artifacts.arn, "${aws_s3_bucket.artifacts.arn}/*"]
     principals {
       type        = "AWS"
       identifiers = formatlist("arn:aws:iam::%s:root", local.trusted_accounts)
@@ -10,7 +10,7 @@ data "aws_iam_policy_document" "s3_for_accounts" {
   }
 }
 
-data "aws_iam_policy_document" "state_machine_assume" {
+data "aws_iam_policy_document" "sfn_assume" {
   statement {
     effect  = "Allow"
     actions = ["sts:AssumeRole"]
@@ -21,12 +21,14 @@ data "aws_iam_policy_document" "state_machine_assume" {
   }
 }
 
-data "aws_iam_policy_document" "lambda_for_state_machine" {
+data "aws_iam_policy_document" "lambda_for_sfn" {
   statement {
     effect  = "Allow"
     actions = ["lambda:InvokeFunction"]
     resources = [
-      "arn:aws:lambda:${local.current_region}:${local.current_account_id}:function:*"
+      "arn:aws:lambda:${local.current_region}:${local.current_account_id}:function:${module.set_version.function_name}",
+      "arn:aws:lambda:${local.current_region}:${local.current_account_id}:function:${module.single_use_fargate_task.function_name}",
+      "arn:aws:lambda:${local.current_region}:${local.current_account_id}:function:${module.error_catcher.function_name}"
     ]
   }
 }
@@ -36,12 +38,8 @@ data "aws_iam_policy_document" "pass_role_for_single_use_fargate_task" {
     effect = "Allow"
     actions = [
       "iam:PassRole",
-      "iam:GetRole"
     ]
-    resources = [
-      aws_iam_role.ecs_task.arn,
-      module.single_use_fargate_task.task_execution_role_arn
-    ]
+    resources = [aws_iam_role.fargate_task.arn]
   }
 }
 
@@ -56,23 +54,23 @@ data "aws_iam_policy_document" "ecs_assume" {
   }
 }
 
-data "aws_iam_policy_document" "role_for_ecs" {
+data "aws_iam_policy_document" "role_assume_for_fargate_task" {
   statement {
     effect    = "Allow"
     actions   = ["sts:AssumeRole"]
-    resources = ["*"]
+    resources = formatlist("arn:aws:iam::%s:role/${aws_iam_role.deployment.name}", local.trusted_accounts)
   }
 }
 
-data "aws_iam_policy_document" "s3_for_ecs" {
+data "aws_iam_policy_document" "s3_for_fargate_task" {
   statement {
     effect    = "Allow"
     actions   = ["s3:Get*", "s3:List*"]
-    resources = [aws_s3_bucket.project_bucket.arn, "${aws_s3_bucket.project_bucket.arn}/*"]
+    resources = [aws_s3_bucket.artifacts.arn, "${aws_s3_bucket.artifacts.arn}/*"]
   }
 }
 
-data "aws_iam_policy_document" "logs_for_ecs" {
+data "aws_iam_policy_document" "logs_for_fargate_task" {
   statement {
     effect    = "Allow"
     actions   = ["logs:CreateLogGroup"]
@@ -90,29 +88,40 @@ data "aws_iam_policy_document" "logs_for_ecs" {
   }
 }
 
-data "aws_iam_policy_document" "task_status_for_ecs" {
+data "aws_iam_policy_document" "task_status_for_fargate_task" {
   statement {
     effect = "Allow"
     actions = [
       "states:SendTaskSuccess",
       "states:SendTaskFailure"
     ]
-    resources = [
-      aws_sfn_state_machine.state_machine.id
-    ]
+    resources = local.state_machine_arns
   }
 }
 
-data "aws_iam_policy_document" "role_for_set_version" {
+data "aws_iam_policy_document" "metrics_for_fargate_task" {
+  statement {
+    effect    = "Allow"
+    actions   = ["cloudwatch:PutMetricData"]
+    resources = ["*"]
+    condition {
+      test     = "StringEquals"
+      variable = "cloudwatch:namespace"
+      values   = ["${local.name_prefix}-single-use-tasks"]
+    }
+  }
+}
+
+data "aws_iam_policy_document" "role_assume_for_set_version" {
   statement {
     effect    = "Allow"
     actions   = ["sts:AssumeRole"]
-    resources = ["arn:aws:iam::*:role/${local.name_prefix}-set-version-cross-account"]
+    resources = formatlist("arn:aws:iam::%s:role/${local.name_prefix}-trusted-set-version", local.trusted_accounts)
   }
 }
 
 
-data "aws_iam_policy_document" "deploy_service_account_assume" {
+data "aws_iam_policy_document" "trusted_account_deployment_assume" {
   statement {
     actions = ["sts:AssumeRole"]
     effect  = "Allow"

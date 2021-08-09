@@ -1,10 +1,10 @@
-data "aws_iam_policy_document" "cross_account_assume" {
+data "aws_iam_policy_document" "trusted_account_assume" {
   statement {
     actions = ["sts:AssumeRole"]
     effect  = "Allow"
     principals {
       type        = "AWS"
-      identifiers = ["arn:aws:iam::${local.service_account_id}:root"]
+      identifiers = formatlist("arn:aws:iam::%s:root", local.trusted_accounts)
     }
   }
 }
@@ -17,19 +17,18 @@ data "aws_iam_policy_document" "ssm_for_set_version" {
   }
 }
 
-data "aws_iam_policy_document" "deploy_cross_account_assume" {
+data "aws_iam_policy_document" "trusted_account_deployment_assume" {
   statement {
     actions = ["sts:AssumeRole"]
     effect  = "Allow"
     principals {
       type        = "AWS"
-      identifiers = ["arn:aws:iam::${local.service_account_id}:root"]
+      identifiers = formatlist("arn:aws:iam::%s:root", local.trusted_accounts)
     }
-
     condition {
       test     = "ArnEquals"
       variable = "aws:PrincipalArn"
-      values   = ["arn:aws:iam::${local.service_account_id}:role/${var.name_prefix}-single-use-tasks"]
+      values   = formatlist("arn:aws:iam::%s:role/${local.fargate_task_role_name}", local.trusted_accounts)
     }
   }
 }
